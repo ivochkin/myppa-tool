@@ -16,6 +16,8 @@ def cli():
 def clean():
     cwd = ensure_cwd()
     cache_dir = os.path.join(cwd, "cache")
+    if not click.confirm("Erase cache/ directory?"):
+        return
     for filename in os.listdir(cache_dir):
         if filename == ".placeholder":
             continue
@@ -60,7 +62,7 @@ def list():
 
     print("Name", "Version", "Distribution", "Codename", "Architecture")
     for var in variants:
-        print(*var)
+        print(var)
 
 
 @cli.command()

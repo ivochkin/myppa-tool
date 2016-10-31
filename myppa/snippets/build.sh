@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ### settings
-arch=amd64
+arch=i386
 suite=trusty
 chroot_dir="$(uuidgen)"
 chroot_original_dir=$chroot_dir.original
@@ -40,29 +40,61 @@ prootsh $apt install -y libcurl4-openssl-dev
 cp -rl $chroot_dir $chroot_original_dir
 
 cat <<EOT > $chroot_dir/build_install_clean.sh
-wget https://github.com/ivochkin/dfk/archive/v0.0.1.tar.gz
-tar xzvf v0.0.1.tar.gz
-cd dfk-0.0.1
+git clone --recursive --branch=v0.0.2 https://github.com/ivochkin/dfk.git
+cd dfk
 bash scripts/bootstrap.sh
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ..
+cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DDFK_MAINTAINER_MODE=ON -DDFK_BUILD_CPP_BINDINGS=ON -DDFK_BUILD_SAMPLES=OFF -DDFK_BUILD_UNIT_TESTS=OFF -DDFK_BUILD_AUTO_TESTS=OFF ..
 make
 make install
-rm -rf /dfk-0.0.1
-rm -rf /v0.0.1.tar.gz
+rm -rf /dfk
 EOT
 prootsh bash build_install_clean.sh
 rm $chroot_dir/build_install_clean.sh
 
 ### Build a list of files created after running build_install_clean.sh
-### Then compress them into package.tar.gz
+### Then compress them into data.tar.gz
 ( cd $chroot_dir && find . > files )
 ( cd $chroot_original_dir && find . > files )
 diff --new-line-format="" --unchanged-line-format="" $chroot_dir/files $chroot_original_dir/files > addedfiles
-( cd $chroot_dir && tar -c -z -v -f ../package.tar.gz $(cat ../addedfiles) )
-rm addedfiles
+( cd $chroot_dir && fakeroot tar -c -z -v -f ../data.tar.gz $(cat ../addedfiles) )
+( cd $chroot_dir && for i in $(cat ../addedfiles); do md5sum $i >> ../md5sums ; done )
+#rm addedfiles
+
+cat <<EOT >control
+Package: dfk
+Priority: optional
+Section: libs
+Maintainer: Stanislav Ivochkin <isn@extrn.org>
+Architecture: $arch
+Version: 0.0.2
+Homepage: https://dfk.extrn.org
+Description: dfk library
+EOT
+
+cat <<EOT >changelog
+dfk (0.0.2) unstable; urgency=low
+
+  * Initial release
+
+ -- Stanislav Ivochkin <isn@extrn.org>  Mon, 31 Oct 2016 00:00:00 +0300
+
+EOT
+
+cat <<EOT >copyright
+Files: *
+Copyright: 2014-2016 Stanislav Ivochkin
+License: Expat
+EOT
+
+echo "2.0" > debian-binary
+
+fakeroot tar czvf control.tar.gz control changelog copyright md5sums
+fakeroot ar cr dfk_0.0.2_i386.deb debian-binary control.tar.gz data.tar.gz
+
+rm control.tar.gz data.tar.gz debian-binary control changelog copyright md5sums
 
 ### cleanup
-rm -rf $chroot_dir
-rm -rf $chroot_original_dir
+#rm -rf $chroot_dir
+#rm -rf $chroot_original_dir
