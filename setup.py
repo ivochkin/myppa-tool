@@ -9,7 +9,8 @@ setup(
     license="MIT",
     url="https://github.com/ivochkin/myppa-tool",
     packages=["myppa"],
-    package_data={"myppa": "snippets/*"},
+    include_package_data=True,
+    package_data={"myppa": ["data/templates/*"]},
     entry_points={
         "console_scripts": [
             "myppa = myppa.cli:main"

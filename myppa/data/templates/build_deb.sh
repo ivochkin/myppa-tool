@@ -1,10 +1,9 @@
 #!/bin/bash
 
 ### settings
-arch=i386
-suite=trusty
 chroot_dir="$(uuidgen)"
 chroot_original_dir=$chroot_dir.original
+bintools_dir=$(pwd)/destroot
 apt_mirror='http://archive.ubuntu.com/ubuntu'
 
 ### make sure that the required tools are installed
@@ -18,13 +17,13 @@ apt=apt
 
 ### install a minbase system with debootstrap
 export DEBIAN_FRONTEND=noninteractive
-fakeroot fakechroot debootstrap --variant=fakechroot --arch=$arch $suite $chroot_dir $apt_mirror
+fakeroot fakechroot debootstrap --variant=fakechroot --arch={{architecture}} {{codename}} $chroot_dir $apt_mirror
 
 # Remove symlinks created by debootstrap
 rm -f $chroot_dir/proc
 rm -f $chroot_dir/dev
 
-function prootsh {
+prootsh() {
   proot --rootfs=$chroot_dir --pwd=/ --root-id --bind=/proc --bind=/dev --bind=/sys "$@"
   rm -rf $chroot_dir/proc $chroot_dir/dev $chroot_dir/sys
 }
@@ -35,20 +34,27 @@ for i in $files_to_copy ; do
   cp $i $chroot_dir/$i
 done
 prootsh $apt install -y build-essential cmake git wget libtool autoconf autogen
-prootsh $apt install -y libcurl4-openssl-dev
+{% for package in build_depends %}
+prootsh $apt install -y {{package}}
+{%- endfor %}
 
 cp -rl $chroot_dir $chroot_original_dir
 
 cat <<EOT > $chroot_dir/build_install_clean.sh
-git clone --recursive --branch=v0.0.2 https://github.com/ivochkin/dfk.git
-cd dfk
-bash scripts/bootstrap.sh
+git clone --recursive --branch={{git_revision}} {{git_repository}} {{name}}
+cd {{name}}
+{{before_configure}}
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DDFK_MAINTAINER_MODE=ON -DDFK_BUILD_CPP_BINDINGS=ON -DDFK_BUILD_SAMPLES=OFF -DDFK_BUILD_UNIT_TESTS=OFF -DDFK_BUILD_AUTO_TESTS=OFF ..
+cmake {% for k, v in cmake_args.items() %}-D{{k}}={{v}} {% endfor %}..
+{{after_configure}}
+{{before_compile}}
 make
+{{after_compile}}
+{{before_install}}
 make install
-rm -rf /dfk
+{{after_install}}
+rm -rf /{{name}}
 EOT
 prootsh bash build_install_clean.sh
 rm $chroot_dir/build_install_clean.sh
@@ -57,44 +63,46 @@ rm $chroot_dir/build_install_clean.sh
 ### Then compress them into data.tar.gz
 ( cd $chroot_dir && find . > files )
 ( cd $chroot_original_dir && find . > files )
-diff --new-line-format="" --unchanged-line-format="" $chroot_dir/files $chroot_original_dir/files > addedfiles
+diff --new-line-format="" --unchanged-line-format="" $chroot_dir/files $chroot_original_dir/files > addedfiles.all
+for i in $(cat addedfiles.all); do grep -q "$i/" addedfiles.all || echo $i; done > addedfiles
 ( cd $chroot_dir && fakeroot tar -c -z -v -f ../data.tar.gz $(cat ../addedfiles) )
 ( cd $chroot_dir && for i in $(cat ../addedfiles); do md5sum $i >> ../md5sums ; done )
-#rm addedfiles
+rm addedfiles
+rm addedfiles.all
 
 cat <<EOT >control
-Package: dfk
-Priority: optional
-Section: libs
-Maintainer: Stanislav Ivochkin <isn@extrn.org>
-Architecture: $arch
-Version: 0.0.2
-Homepage: https://dfk.extrn.org
+Package: {{name}}
+Priority: {{deb_priority}}
+Section: {{deb_section}}
+Maintainer: {{maintainer}}
+Architecture: {{architecture}}
+Version: {{version}}
+Homepage: {{homepage}}
 Description: dfk library
 EOT
 
 cat <<EOT >changelog
-dfk (0.0.2) unstable; urgency=low
+{{name}} ({{version}}) unstable; urgency=low
 
   * Initial release
 
- -- Stanislav Ivochkin <isn@extrn.org>  Mon, 31 Oct 2016 00:00:00 +0300
+ -- {{maintainer}}  Mon, 31 Oct 2016 00:00:00 +0300
 
 EOT
 
 cat <<EOT >copyright
 Files: *
-Copyright: 2014-2016 Stanislav Ivochkin
-License: Expat
+Copyright: 2014-2016 {{maintainer}}
+License: {{license}}
 EOT
 
 echo "2.0" > debian-binary
 
 fakeroot tar czvf control.tar.gz control changelog copyright md5sums
-fakeroot ar cr dfk_0.0.2_i386.deb debian-binary control.tar.gz data.tar.gz
+fakeroot ar cr {{name}}_{{version}}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
 
 rm control.tar.gz data.tar.gz debian-binary control changelog copyright md5sums
 
 ### cleanup
-#rm -rf $chroot_dir
-#rm -rf $chroot_original_dir
+rm -rf $chroot_dir
+rm -rf $chroot_original_dir

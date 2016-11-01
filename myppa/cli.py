@@ -3,10 +3,13 @@
 import os
 import sys
 import shutil
+import hashlib
+from subprocess import Popen
+from copy import copy
 import click
 import yaml
+from jinja2 import Template
 from myppa.utils import *
-from myppa.spec import Spec
 
 @click.group()
 def cli():
@@ -30,10 +33,10 @@ def clean():
 @cli.command()
 def list():
     cwd = ensure_cwd()
-    packages_dir = os.path.join(cwd, "packages")
+    specs_dir = os.path.join(cwd, "specs")
     variants = []
-    for package_name in os.listdir(packages_dir):
-        package_dir = os.path.join(packages_dir, package_name)
+    for package_name in os.listdir(specs_dir):
+        package_dir = os.path.join(specs_dir, package_name)
         if not os.path.isdir(package_dir):
             continue
         for distribution_name in os.listdir(package_dir):
@@ -47,18 +50,6 @@ def list():
                 spec_file = os.path.join(spec_dir, 'spec.yaml')
                 if not os.path.exists(spec_file):
                     continue
-                spec = Spec()
-                spec.parse(spec_file)
-                for pkg in spec.packages():
-                    for version in pkg.versions():
-                        for arch in pkg.architectures():
-                            variant = (
-                                pkg.name(),
-                                version,
-                                distribution_name,
-                                codename,
-                                arch)
-                            variants.append(variant)
 
     print("Name", "Version", "Distribution", "Codename", "Architecture")
     for var in variants:
@@ -70,10 +61,50 @@ def list():
 @click.argument("distribution")
 @click.argument("architecture")
 def build(name, distribution, architecture):
-    with open("spec.yaml", 'r') as stream:
+    distcodename = distribution.split(":")
+    dist = distcodename[0]
+    if len(distcodename) > 1:
+        codename = distcodename[1]
+    else:
+        codename = default_codename(dist)
+    codename = normalize_codename(codename)
+    name, version = name.split("@")
+    specpath = os.path.join("specs", name, dist, codename, "spec.yaml")
+    with open(specpath, 'r') as stream:
         try:
             for i in yaml.load_all(stream):
-                print(i)
+                if i["version"] == version and i["name"] == name:
+                    h = hashlib.sha1()
+                    for component in [name, version, dist, codename, architecture]:
+                        h.update(component.encode('utf-8'))
+                    conf_name = h.hexdigest()
+                    script_name = conf_name + ".sh"
+                    with open(os.path.join("cache", script_name), 'w') as out:
+                        template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
+                        spec_env= i
+                        env = copy(spec_env)
+                        for k, v in spec_env.items():
+                            env[k.replace("-", "_")] = v
+                        env['distribution'] = dist
+                        env['codename'] = codename
+                        env['architecture'] = architecture
+                        out.write(template.render(env))
+                    work_dir = os.path.join("cache", conf_name)
+                    try:
+                        os.mkdir(work_dir)
+                    except:
+                        pass
+                    script_name = os.path.join("..", script_name)
+                    p = Popen(['sh', script_name], cwd=work_dir)
+                    p.wait()
+                    outdir = os.path.join("packages", ".".join([dist, codename]))
+                    try:
+                        os.mkdir(outdir)
+                    except:
+                        pass
+                    for filename in os.listdir(work_dir):
+                        if filename.endswith(".deb"):
+                            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
         except yaml.YAMLError as exc:
             print(exc)
 
