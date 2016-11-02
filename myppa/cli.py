@@ -73,6 +73,7 @@ def build(name, distribution, architecture):
     with open(specpath, 'r') as stream:
         try:
             for i in yaml.load_all(stream):
+                i = i["package"]
                 if i["version"] == version and i["name"] == name:
                     h = hashlib.sha1()
                     for component in [name, version, dist, codename, architecture]:

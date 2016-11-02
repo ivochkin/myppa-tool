@@ -44,9 +44,13 @@ cat <<EOT > $chroot_dir/build_install_clean.sh
 git clone --recursive --branch={{git_revision}} {{git_repository}} {{name}}
 cd {{name}}
 {{before_configure}}
+{% if builder == "cmake" %}
 mkdir build
 cd build
 cmake {% for k, v in cmake_args.items() %}-D{{k}}={{v}} {% endfor %}..
+{% elif builder == "autotools" %}
+./configure {% for k, v in (configure_args or {}).items() %}--{{k}}={{v}} {% endfor %}
+{% endif %}
 {{after_configure}}
 {{before_compile}}
 make
