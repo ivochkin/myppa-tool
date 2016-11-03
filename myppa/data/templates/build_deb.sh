@@ -6,8 +6,6 @@ taskid=$(uuidgen)
 # myppa-install-prerequisite.sh
 cat <<EOT > myppa-install-prerequisite.sh
 #!/usr/bin/env bash
-apt-get update
-apt-get install -y build-essential binutils fakeroot cmake git autotools-dev autoconf autogen automake libtool wget curl
 {% for package in build_depends %}
 apt-get install -y {{package}}
 {%- endfor %}
@@ -81,9 +79,9 @@ cat <<EOT >debian-binary
 EOT
 
 git clone --recursive --branch={{git_revision}} {{git_repository}} src
-
-docker pull {{distribution}}:{{codename}}
-docker run --volume $(pwd):/myppa -w /myppa --cidfile stage1.cid {{distribution}}:{{codename}} bash myppa-install-prerequisite.sh
+baseimage=ivochkin/myppa:{{distribution}}.{{codename}}.{{architecture}}
+docker pull $baseimage
+docker run --volume $(pwd):/myppa -w /myppa --cidfile stage1.cid $baseimage bash myppa-install-prerequisite.sh
 stage1cid=$(cat stage1.cid)
 stage1iid=myppa:$taskid-1
 docker commit $stage1cid $stage1iid
