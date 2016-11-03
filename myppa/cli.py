@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import hashlib
+import uuid
 from subprocess import Popen
 from copy import copy
 import click
@@ -72,40 +73,42 @@ def build(name, distribution, architecture):
     specpath = os.path.join("specs", name, dist, codename, "spec.yaml")
     with open(specpath, 'r') as stream:
         try:
-            for i in yaml.load_all(stream):
-                i = i["package"]
-                if i["version"] == version and i["name"] == name:
-                    h = hashlib.sha1()
-                    for component in [name, version, dist, codename, architecture]:
-                        h.update(component.encode('utf-8'))
-                    conf_name = h.hexdigest()
-                    script_name = conf_name + ".sh"
-                    with open(os.path.join("cache", script_name), 'w') as out:
-                        template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
-                        spec_env= i
-                        env = copy(spec_env)
-                        for k, v in spec_env.items():
-                            env[k.replace("-", "_")] = v
-                        env['distribution'] = dist
-                        env['codename'] = codename
-                        env['architecture'] = architecture
-                        out.write(template.render(env))
-                    work_dir = os.path.join("cache", conf_name)
-                    try:
-                        os.mkdir(work_dir)
-                    except:
-                        pass
-                    script_name = os.path.join("..", script_name)
-                    p = Popen(['sh', script_name], cwd=work_dir)
-                    p.wait()
-                    outdir = os.path.join("packages", ".".join([dist, codename]))
-                    try:
-                        os.mkdir(outdir)
-                    except:
-                        pass
-                    for filename in os.listdir(work_dir):
-                        if filename.endswith(".deb"):
-                            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
+            for document in yaml.load_all(stream):
+                for package in document.values():
+                    if package["version"] == version and package["name"] == name:
+                        h = hashlib.sha1()
+                        for component in [name, version, dist, codename, architecture]:
+                            h.update(component.encode('utf-8'))
+                        conf_name = h.hexdigest()
+                        script_name = conf_name + ".sh"
+                        with open(os.path.join("cache", script_name), 'w') as out:
+                            template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
+                            spec_env= package
+                            env = copy(spec_env)
+                            for k, v in spec_env.items():
+                                env[k.replace("-", "_")] = v
+                            env['distribution'] = dist
+                            env['codename'] = codename
+                            env['architecture'] = architecture
+                            out.write(template.render(env))
+                        tasks_dir = os.path.join("cache", "task")
+                        work_dir = os.path.join(tasks_dir, str(uuid.uuid4()))
+                        for i in [tasks_dir, work_dir]:
+                            try:
+                                os.mkdir(i)
+                            except:
+                                pass
+                        script_name = os.path.join("..", "..", script_name)
+                        p = Popen(['sh', script_name], cwd=work_dir)
+                        p.wait()
+                        outdir = os.path.join("packages", ".".join([dist, codename]))
+                        try:
+                            os.mkdir(outdir)
+                        except:
+                            pass
+                        for filename in os.listdir(work_dir):
+                            if filename.endswith(".deb"):
+                                shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
         except yaml.YAMLError as exc:
             print(exc)
 

@@ -1,78 +1,54 @@
-#!/bin/bash
+#!/bin/sh
+# Tree structure of the cwd:
 
-### settings
-chroot_dir="$(uuidgen)"
-chroot_original_dir=$chroot_dir.original
-bintools_dir=$(pwd)/destroot
-apt_mirror='http://archive.ubuntu.com/ubuntu'
+taskid=$(uuidgen)
 
-### make sure that the required tools are installed
-packages="debootstrap fakeroot fakechroot proot"
-for i in $packages ; do
-  which $i || ( echo "Missing $i" && exit 1 )
-done
-
-### apt-get have been removed from 16.04
-apt=apt
-
-### install a minbase system with debootstrap
-export DEBIAN_FRONTEND=noninteractive
-fakeroot fakechroot debootstrap --variant=fakechroot --arch={{architecture}} {{codename}} $chroot_dir $apt_mirror
-
-# Remove symlinks created by debootstrap
-rm -f $chroot_dir/proc
-rm -f $chroot_dir/dev
-
-prootsh() {
-  proot --rootfs=$chroot_dir --pwd=/ --root-id --bind=/proc --bind=/dev --bind=/sys "$@"
-  rm -rf $chroot_dir/proc $chroot_dir/dev $chroot_dir/sys
-}
-
-### install ubuntu-minimal
-files_to_copy="/etc/resolv.conf"
-for i in $files_to_copy ; do
-  cp $i $chroot_dir/$i
-done
-prootsh $apt install -y build-essential cmake git wget libtool autoconf autogen
+# myppa-install-prerequisite.sh
+cat <<EOT > myppa-install-prerequisite.sh
+#!/usr/bin/env bash
+apt-get update
+apt-get install -y build-essential binutils fakeroot cmake git autotools-dev autoconf autogen automake libtool wget curl
 {% for package in build_depends %}
-prootsh $apt install -y {{package}}
+apt-get install -y {{package}}
 {%- endfor %}
-
-cp -rl $chroot_dir $chroot_original_dir
-
-cat <<EOT > $chroot_dir/build_install_clean.sh
-git clone --recursive --branch={{git_revision}} {{git_repository}} {{name}}
-cd {{name}}
-{{before_configure}}
-{% if builder == "cmake" %}
-mkdir build
-cd build
-cmake {% for k, v in cmake_args.items() %}-D{{k}}={{v}} {% endfor %}..
-{% elif builder == "autotools" %}
-./configure {% for k, v in (configure_args or {}).items() %}--{{k}}={{v}} {% endfor %}
-{% endif %}
-{{after_configure}}
-{{before_compile}}
-make
-{{after_compile}}
-{{before_install}}
-make install
-{{after_install}}
-rm -rf /{{name}}
 EOT
-prootsh bash build_install_clean.sh
-rm $chroot_dir/build_install_clean.sh
 
-### Build a list of files created after running build_install_clean.sh
-### Then compress them into data.tar.gz
-( cd $chroot_dir && find . > files )
-( cd $chroot_original_dir && find . > files )
-diff --new-line-format="" --unchanged-line-format="" $chroot_dir/files $chroot_original_dir/files > addedfiles.all
-for i in $(cat addedfiles.all); do grep -q "$i/" addedfiles.all || echo $i; done > addedfiles
-( cd $chroot_dir && fakeroot tar -c -z -v -f ../data.tar.gz $(cat ../addedfiles) )
-( cd $chroot_dir && for i in $(cat ../addedfiles); do md5sum $i >> ../md5sums ; done )
-rm addedfiles
-rm addedfiles.all
+# myppa-install-project.sh
+cat <<EOT > myppa-install-project.sh
+#!/usr/bin/env bash
+cd /myppa/src
+{{before_configure}}
+mkdir /myppa/build
+cd /myppa/build
+{% if builder == "cmake" %}
+cmake {% for k, v in cmake_args.items() %}-D{{k}}={{v}} {% endfor %}../src
+{% elif builder == "autotools" %}
+../src/configure {% for k, v in (configure_args or {}).items() %}--{{k}}={{v}} {% endfor %}
+{% endif %}
+cd /myppa/src
+{{after_configure}}
+cd /myppa/src
+{{before_compile}}
+cd /myppa/build
+make
+cd /myppa/src
+{{after_compile}}
+cd /myppa/src
+{{before_install}}
+cd /myppa/build
+make install
+cd /myppa/src
+{{after_install}}
+EOT
+
+# myppa-pack-deb.sh
+cat <<EOT >myppa-pack-deb.sh
+#!/usr/bin/env bash
+<myppa-new-files xargs tar czvf data.tar.gz
+<myppa-new-files xargs md5sum > md5sums
+fakeroot tar czvf control.tar.gz control changelog copyright md5sums
+fakeroot ar cr {{name}}_{{version}}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
+EOT
 
 cat <<EOT >control
 Package: {{name}}
@@ -100,13 +76,22 @@ Copyright: 2014-2016 {{maintainer}}
 License: {{license}}
 EOT
 
-echo "2.0" > debian-binary
+cat <<EOT >debian-binary
+2.0
+EOT
 
-fakeroot tar czvf control.tar.gz control changelog copyright md5sums
-fakeroot ar cr {{name}}_{{version}}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
+git clone --recursive --branch={{git_revision}} {{git_repository}} src
 
-rm control.tar.gz data.tar.gz debian-binary control changelog copyright md5sums
-
-### cleanup
-rm -rf $chroot_dir
-rm -rf $chroot_original_dir
+docker pull {{distribution}}:{{codename}}
+docker run --volume $(pwd):/myppa -w /myppa --cidfile stage1.cid {{distribution}}:{{codename}} bash myppa-install-prerequisite.sh
+stage1cid=$(cat stage1.cid)
+stage1iid=myppa:$taskid-1
+docker commit $stage1cid $stage1iid
+docker run --volume $(pwd):/myppa -w /myppa --cidfile stage2.cid $stage1iid bash myppa-install-project.sh
+stage2cid=$(cat stage2.cid)
+stage2iid=myppa:$taskid-2
+docker diff $stage2cid | grep -e '^A' | awk '{print $2}' > myppa-new-files
+docker commit $stage2cid $stage2iid
+docker run --rm --volume $(pwd):/myppa -w /myppa $stage2iid bash myppa-pack-deb.sh
+docker rm $stage2cid $stage1cid
+docker rmi $stage1iid $stage2iid
