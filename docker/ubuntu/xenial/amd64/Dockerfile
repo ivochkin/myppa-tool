@@ -3,8 +3,8 @@ FROM ubuntu:xenial
 MAINTAINER Stanislav Ivochkin "isn@extrn.org"
 
 RUN apt update \
-  && apt-get upgrade \
   && apt install --no-install-recommends --no-install-suggests -y \
+    ca-certificates \
     build-essential \
     binutils \
     fakeroot \
