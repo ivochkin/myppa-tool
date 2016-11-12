@@ -6,11 +6,12 @@ import shutil
 import hashlib
 import uuid
 from subprocess import Popen
-from copy import copy
 import click
 import yaml
-from jinja2 import Template
 from myppa.utils import *
+from myppa.package import Package
+import sqlite3
+from pprint import pformat
 
 @click.group()
 def cli():
@@ -33,84 +34,77 @@ def clean():
 
 @cli.command()
 def list():
-    cwd = ensure_cwd()
-    specs_dir = os.path.join(cwd, "specs")
-    variants = []
-    for package_name in os.listdir(specs_dir):
-        package_dir = os.path.join(specs_dir, package_name)
-        if not os.path.isdir(package_dir):
-            continue
-        for distribution_name in os.listdir(package_dir):
-            distribution_dir = os.path.join(package_dir, distribution_name)
-            if not os.path.isdir(distribution_dir):
-                continue
-            for codename in os.listdir(distribution_dir):
-                spec_dir = os.path.join(distribution_dir, codename)
-                if not os.path.isdir(spec_dir):
-                    continue
-                spec_file = os.path.join(spec_dir, 'spec.yaml')
-                if not os.path.exists(spec_file):
-                    continue
-
-    print("Name", "Version", "Distribution", "Codename", "Architecture")
-    for var in variants:
-        print(var)
-
+    conn = sqlite3.connect(get_packages_db())
+    c = conn.cursor()
+    print("Packages with fixed versions")
+    for row in c.execute("SELECT name, version from package WHERE NOT version_is_computed ORDER BY name"):
+        print(row[0], row[1])
+    print("Packages with version computed upon build")
+    for row in c.execute("SELECT name, version from package WHERE version_is_computed ORDER BY name"):
+        print(row[0], row[1])
+    conn.close()
 
 @cli.command()
-@click.argument("name")
-@click.argument("distribution")
-@click.argument("architecture")
-def build(name, distribution, architecture):
-    distcodename = distribution.split(":")
-    dist = distcodename[0]
-    if len(distcodename) > 1:
-        codename = distcodename[1]
-    else:
-        codename = default_codename(dist)
-    codename = normalize_codename(codename)
-    name, version = name.split("@")
-    specpath = os.path.join("specs", name, dist, codename, "spec.yaml")
-    with open(specpath, 'r') as stream:
-        try:
-            for document in yaml.load_all(stream):
-                for package in document.values():
-                    if package["version"] == version and package["name"] == name:
-                        h = hashlib.sha1()
-                        for component in [name, version, dist, codename, architecture]:
-                            h.update(component.encode('utf-8'))
-                        conf_name = h.hexdigest()
-                        script_name = conf_name + ".sh"
-                        with open(os.path.join("cache", script_name), 'w') as out:
-                            template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
-                            spec_env= package
-                            env = copy(spec_env)
-                            for k, v in spec_env.items():
-                                env[k.replace("-", "_")] = v
-                            env['distribution'] = dist
-                            env['codename'] = codename
-                            env['architecture'] = architecture
-                            out.write(template.render(env))
-                        tasks_dir = os.path.join("cache", "task")
-                        work_dir = os.path.join(tasks_dir, str(uuid.uuid4()))
-                        for i in [tasks_dir, work_dir]:
-                            try:
-                                os.mkdir(i)
-                            except:
-                                pass
-                        script_name = os.path.join("..", "..", script_name)
-                        p = Popen(['sh', script_name], cwd=work_dir)
-                        p.wait()
-                        outdir = os.path.join("packages", ".".join([dist, codename]))
-                        try:
-                            os.mkdir(outdir)
-                        except:
-                            pass
-                        for filename in os.listdir(work_dir):
-                            if filename.endswith(".deb"):
-                                shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
-        except yaml.YAMLError as exc:
-            print(exc)
+def update():
+    specs = []
+    for root, dirs, files in os.walk(get_specs_dir()):
+        for filename in files:
+            if filename.endswith('.yaml'):
+                specs.append(os.path.join(root, filename))
+    click.echo("Total {} spec files found".format(len(specs)))
+    if os.path.exists(get_packages_db()):
+        os.remove(get_packages_db())
+    conn = sqlite3.connect(get_packages_db())
+    c = conn.cursor()
+    c.execute("CREATE TABLE package (name TEXT, version_is_computed INTEGER, version TEXT, description TEXT)")
+    for spec in specs:
+        click.echo("Processing '{}'".format(spec))
+        with open(spec, 'r') as f:
+            for document in yaml.load_all(f):
+                for name, package in document.items():
+                    if not name.startswith("package-"):
+                        continue
+                    pkg = Package(package)
+                    pkg.validate()
+                    pkg.persist(conn)
+    conn.commit()
+    conn.close()
+
+@cli.command()
+@click.argument("package")
+def show(package):
+    click.echo(pformat(get_package_description(package), indent=2))
+
+@cli.command()
+@click.argument("package")
+@click.argument("distribution", type=click.Choice(supported_distributions()))
+@click.argument("architecture", type=click.Choice(supported_architectures()))
+def script(package, distribution, architecture):
+    click.echo(get_script(package, distribution, architecture))
+
+@cli.command()
+@click.argument("package")
+@click.argument("distribution", type=click.Choice(supported_distributions()))
+@click.argument("architecture", type=click.Choice(supported_architectures()))
+def build(package, distribution, architecture):
+    dist, codename = parse_distribution(distribution)
+    script = get_script(package, distribution, architecture)
+    scriptid = hashlib.sha1(script.encode('utf-8')).hexdigest()
+    script_fullpath = os.path.join(get_cache_dir(), "{}.sh".format(scriptid))
+    open(script_fullpath, 'w').write(script)
+    tasks_dir = ensure_tasks_dir()
+    taskid = str(uuid.uuid4())
+    work_dir = os.path.join(tasks_dir, taskid)
+    os.mkdir(work_dir)
+    Popen(['sh', script_fullpath], cwd=work_dir).wait()
+    outdir = os.path.join("packages", ".".join([dist, codename]))
+    try:
+        os.mkdir(outdir)
+    except:
+        pass
+    for filename in os.listdir(work_dir):
+        if filename.endswith(".deb"):
+            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
 
 def main():
     return cli()

@@ -3,6 +3,14 @@
 
 taskid=$(uuidgen)
 
+git clone --recursive --branch={{git_revision}} {{git_repository}} src
+version={{version}}
+{% if version_script %}
+cd src
+version=$({{version_script}})
+cd -
+{% endif %}
+
 # myppa-install-prerequisite.sh
 cat <<EOT > myppa-install-prerequisite.sh
 #!/usr/bin/env bash
@@ -45,7 +53,7 @@ cat <<EOT >myppa-pack-deb.sh
 <myppa-new-files xargs tar czvf data.tar.gz
 <myppa-new-files xargs md5sum > md5sums
 fakeroot tar czvf control.tar.gz control changelog copyright md5sums
-fakeroot ar cr {{name}}_{{version}}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
+fakeroot ar cr {{name}}_${version}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
 EOT
 
 cat <<EOT >control
@@ -54,13 +62,13 @@ Priority: {{deb_priority}}
 Section: {{deb_section}}
 Maintainer: {{maintainer}}
 Architecture: {{architecture}}
-Version: {{version}}
+Version: ${version}
 Homepage: {{homepage}}
 Description: dfk library
 EOT
 
 cat <<EOT >changelog
-{{name}} ({{version}}) unstable; urgency=low
+{{name}} ($version) unstable; urgency=low
 
   * Initial release
 
@@ -78,7 +86,6 @@ cat <<EOT >debian-binary
 2.0
 EOT
 
-git clone --recursive --branch={{git_revision}} {{git_repository}} src
 baseimage=ivochkin/myppa:{{distribution}}.{{codename}}.{{architecture}}
 docker pull $baseimage
 docker run --volume $(pwd):/myppa -w /myppa --cidfile stage1.cid $baseimage bash myppa-install-prerequisite.sh
