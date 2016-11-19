@@ -87,3 +87,7 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Generated files
+version.txt
+myppa/_version.py
