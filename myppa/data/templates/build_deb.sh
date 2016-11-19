@@ -53,8 +53,13 @@ EOT
 # myppa-pack-deb.sh
 cat <<EOT >myppa-pack-deb.sh
 #!/usr/bin/env bash
-<myppa-new-files xargs tar czf data.tar.gz
-<myppa-new-files xargs md5sum > md5sums
+for i in \$(cat myppa-new-files); do
+  if ! grep -q "^\$i/" myppa-new-files; then
+    echo \$i >> myppa-new-files-no-dirs
+  fi
+done
+<myppa-new-files-no-dirs xargs tar czf data.tar.gz
+<myppa-new-files-no-dirs xargs md5sum > md5sums
 fakeroot tar czvf control.tar.gz control changelog copyright md5sums
 fakeroot ar cr {{name}}_${version}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
 EOT
