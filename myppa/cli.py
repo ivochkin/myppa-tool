@@ -8,12 +8,14 @@ import uuid
 from subprocess import Popen
 import click
 import yaml
+from myppa import __version__
 from myppa.utils import *
 from myppa.package import Package
 import sqlite3
 from pprint import pformat
 
 @click.group()
+@click.version_option(__version__)
 def cli():
     pass
 
