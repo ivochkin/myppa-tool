@@ -10,6 +10,9 @@ cd src
 version=$({{version_script}})
 cd -
 {% endif %}
+{% if version_append_codename %}
+version=${version}~{{codename}}
+{% endif %}
 
 # myppa-install-prerequisite.sh
 cat <<EOT > myppa-install-prerequisite.sh

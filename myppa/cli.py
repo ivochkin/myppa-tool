@@ -97,11 +97,7 @@ def build(package, distribution, architecture):
     work_dir = os.path.join(tasks_dir, taskid)
     os.mkdir(work_dir)
     Popen(['sh', script_fullpath], cwd=work_dir).wait()
-    outdir = os.path.join("packages", ".".join([dist, codename]))
-    try:
-        os.mkdir(outdir)
-    except:
-        pass
+    outdir = "packages"
     for filename in os.listdir(work_dir):
         if filename.endswith(".deb"):
             shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
