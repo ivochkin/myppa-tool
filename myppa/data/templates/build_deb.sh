@@ -53,13 +53,14 @@ EOT
 # myppa-pack-deb.sh
 cat <<EOT >myppa-pack-deb.sh
 #!/usr/bin/env bash
-for i in \$(cat myppa-new-files); do
-  if ! grep -q "^\$i/" myppa-new-files; then
+for i in \$(cat myppa-new-files-raw); do
+  if ! grep -q "^\$i/" myppa-new-files-raw; then
     echo \$i >> myppa-new-files-no-dirs
   fi
 done
-<myppa-new-files-no-dirs xargs tar czf data.tar.gz
-<myppa-new-files-no-dirs xargs md5sum > md5sums
+cat myppa-new-files-no-dirs | egrep '({{install_paths | join(")|(")}})' > myppa-new-files
+<myppa-new-files xargs tar czf data.tar.gz
+<myppa-new-files xargs md5sum > md5sums
 fakeroot tar czvf control.tar.gz control changelog copyright md5sums
 fakeroot ar cr {{name}}_${version}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
 EOT
@@ -103,7 +104,7 @@ docker commit $stage1cid $stage1iid
 docker run --volume $(pwd):/myppa -w /myppa --cidfile stage2.cid $stage1iid bash myppa-install-project.sh
 stage2cid=$(cat stage2.cid)
 stage2iid=myppa:$taskid-2
-docker diff $stage2cid | grep -e '^A' | awk '{print $2}' > myppa-new-files
+docker diff $stage2cid | grep -e '^A' | awk '{print $2}' > myppa-new-files-raw
 docker commit $stage2cid $stage2iid
 docker run --rm --volume $(pwd):/myppa -w /myppa $stage2iid bash myppa-pack-deb.sh
 docker rm $stage2cid $stage1cid
