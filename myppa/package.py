@@ -2,6 +2,9 @@
 
 import subprocess
 import json
+import re
+from copy import copy
+from myppa.key import Key
 
 class Package(object):
     def __init__(self, description):
@@ -18,6 +21,27 @@ class Package(object):
 
     def description(self):
         return self._description
+
+    def resolve(self, distribution, codename, architecture):
+        resolved = {}
+        tagged_keys = []
+        for k, v in self.description().items():
+            k = Key.parse(k)
+            if k.tag() is None:
+                resolved[k.name()] = v
+            else:
+                tagged_keys.append((k, v))
+        # sort by tag
+        tagged_keys = sorted(tagged_keys, key=lambda x: x[0].tag())
+        for k, v in tagged_keys:
+            if k.name() in resolved:
+                if k.on_merge_add():
+                    resolved[k.name()].update(v)
+                elif k.on_merge_remove():
+                    del resolved[k.name()]
+            else:
+                resolved[k.name()] = v
+        return resolved
 
     def persist(self, conn):
         c = conn.cursor()

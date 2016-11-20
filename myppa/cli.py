@@ -12,7 +12,6 @@ from myppa import __version__
 from myppa.utils import *
 from myppa.package import Package
 import sqlite3
-from pprint import pformat
 
 @click.group()
 @click.version_option(__version__)
@@ -74,20 +73,48 @@ def update():
 
 @cli.command()
 @click.argument("package")
-def show(package):
-    click.echo(pformat(get_package_description(package), indent=2))
+@click.option("--format",
+        type=click.Choice(supported_formats()),
+        default=supported_formats()[0])
+def show(package, format):
+    description = get_package(package).description()
+    click.echo(format_object(description, format))
 
 @cli.command()
 @click.argument("package")
-@click.argument("distribution", type=click.Choice(supported_distributions()))
-@click.argument("architecture", type=click.Choice(supported_architectures()))
+@click.option("--distribution", "-d",
+        type=click.Choice(supported_distributions()),
+        default=supported_distributions()[0])
+@click.option("--architecture", "-a",
+        type=click.Choice(supported_architectures()),
+        default=supported_architectures()[0])
+@click.option("--format",
+        type=click.Choice(supported_formats()),
+        default=supported_formats()[0])
+def resolve(package, distribution, architecture, format):
+    dist, codename = parse_distribution(distribution)
+    resolved = get_package(package).resolve(dist, codename, architecture)
+    click.echo(format_object(resolved, format))
+
+@cli.command()
+@click.argument("package")
+@click.option("--distribution", "-d",
+        type=click.Choice(supported_distributions()),
+        default=supported_distributions()[0])
+@click.option("--architecture", "-a",
+        type=click.Choice(supported_architectures()),
+        default=supported_architectures()[0])
 def script(package, distribution, architecture):
     click.echo(get_script(package, distribution, architecture))
 
 @cli.command()
 @click.argument("package")
-@click.argument("distribution", type=click.Choice(supported_distributions()))
-@click.argument("architecture", type=click.Choice(supported_architectures()))
+@click.option("--distribution", "-d",
+        type=click.Choice(supported_distributions()),
+        default=supported_distributions()[0])
+@click.option("--architecture", "-a",
+        type=click.Choice(supported_architectures()),
+        default=supported_architectures()[0])
 def build(package, distribution, architecture):
     dist, codename = parse_distribution(distribution)
     script = get_script(package, distribution, architecture)

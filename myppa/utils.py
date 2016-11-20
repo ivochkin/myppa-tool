@@ -4,20 +4,26 @@ import os
 import sys
 import sqlite3
 import click
+import yaml
+import json
+import xmltodict
 from copy import copy
 from jinja2 import Template
 from myppa.package import Package
 
 def supported_architectures():
-    return ['i386', 'amd64']
+    return ['amd64', 'i386']
 
 def supported_distributions():
     supported_ubuntus = [
-        "precise", "12.04",
-        "trusty", "14.04",
         "xenial", "16.04",
+        "trusty", "14.04",
+        "precise", "12.04",
     ]
     return ["ubuntu:" + i for i in supported_ubuntus]
+
+def supported_formats():
+    return ["yaml", "json", "xml"]
 
 def _normalize_codename(name):
     return {
@@ -93,7 +99,7 @@ def get_packages_db():
 def get_specs_dir():
     return os.path.join(ensure_cwd(), "specs")
 
-def get_package_description(package):
+def get_package(package):
     name, version = parse_package(package)
     conn = sqlite3.connect(get_packages_db())
     try:
@@ -102,16 +108,26 @@ def get_package_description(package):
         click.echo(err)
         sys.exit(1)
     conn.close()
-    return package.description()
+    return package
 
 def get_script(package, distribution, architecture):
-    description = get_package_description(package)
+    distribution, codename = parse_distribution(distribution)
+    description = get_package(package).resolve(distribution, codename, architecture)
     env = copy(description)
     for k, v in description.items():
         env[k.replace("-", "_")] = v
-    distribution, codename = parse_distribution(distribution)
     env['distribution'] = distribution
     env['codename'] = codename
     env['architecture'] = architecture
     template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
     return template.render(env)
+
+def format_object(obj, format_type):
+    if format_type == "yaml":
+        return yaml.dump(obj, default_flow_style=False)
+    elif format_type == "json":
+        return json.dumps(obj, indent=2)
+    elif format_type == "xml":
+        obj = {"package": obj}
+        return xmltodict.unparse(obj, pretty=True, indent="  ")
+    raise RuntimeError("Unknown format '{}'".format(format_type))

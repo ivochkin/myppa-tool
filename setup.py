@@ -23,5 +23,6 @@ setup(
         "click>=6.0",
         "Jinja2>=2.7",
         "PyYAML>=3.12",
+        "xmltodict>=0.10",
     ],
 )
