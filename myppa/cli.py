@@ -50,7 +50,7 @@ def update():
     specs = []
     for root, dirs, files in os.walk(get_specs_dir()):
         for filename in files:
-            if filename.endswith('.yaml'):
+            if filename.endswith(".yaml") or filename.endswith(".yml"):
                 specs.append(os.path.join(root, filename))
     click.echo("Total {} spec files found".format(len(specs)))
     if os.path.exists(get_packages_db()):
