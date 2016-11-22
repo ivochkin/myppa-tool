@@ -8,8 +8,9 @@ import yaml
 import json
 import xmltodict
 from copy import copy
-from jinja2 import Template
+from jinja2 import Environment, PackageLoader, Template
 from myppa.package import Package
+from myppa.filters import *
 
 def supported_architectures():
     return ['amd64', 'i386']
@@ -113,14 +114,15 @@ def get_package(package):
 def get_script(package, distribution, architecture):
     distribution, codename = parse_distribution(distribution)
     description = get_package(package).resolve(distribution, codename, architecture)
-    env = copy(description)
+    variables = copy(description)
     for k, v in description.items():
-        env[k.replace("-", "_")] = v
-    env['distribution'] = distribution
-    env['codename'] = codename
-    env['architecture'] = architecture
-    template = Template(open(get_data("templates", "build_deb.sh"), 'r').read())
-    return template.render(env)
+        variables[k.replace("-", "_")] = v
+    variables['distribution'] = distribution
+    variables['codename'] = codename
+    variables['architecture'] = architecture
+    env = Environment(loader=PackageLoader("myppa", os.path.join("data", "templates")))
+    env.filters["format_deb_depends"] = format_deb_depends
+    return env.get_template("build_deb.sh").render(variables)
 
 def format_object(obj, format_type):
     if format_type == "yaml":

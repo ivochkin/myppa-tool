@@ -73,6 +73,12 @@ Maintainer: {{maintainer}}
 Architecture: {{architecture}}
 Version: ${version}
 Homepage: {{homepage}}
+{% if depends %}
+Depends: {{depends | format_deb_depends}}
+{% endif %}
+{% if provides %}
+Provides: {{provides}}
+{% endif %}
 Description: dfk library
 EOT
 
