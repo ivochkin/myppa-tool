@@ -111,15 +111,16 @@ def get_package(package):
     conn.close()
     return package
 
-def get_script(package, distribution, architecture):
+def get_script(http_proxy, package, distribution, architecture):
     distribution, codename = parse_distribution(distribution)
     description = get_package(package).resolve(distribution, codename, architecture)
+    description['http-proxy'] = http_proxy
+    description['distribution'] = distribution
+    description['codename'] = codename
+    description['architecture'] = architecture
     variables = copy(description)
     for k, v in description.items():
         variables[k.replace("-", "_")] = v
-    variables['distribution'] = distribution
-    variables['codename'] = codename
-    variables['architecture'] = architecture
     env = Environment(loader=PackageLoader("myppa", os.path.join("data", "templates")))
     env.filters["format_deb_depends"] = format_deb_depends
     return env.get_template("build_deb.sh").render(variables)

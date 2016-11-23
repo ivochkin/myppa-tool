@@ -3,6 +3,11 @@
 
 taskid=$(uuidgen)
 
+{% if http_proxy %}
+export http_proxy={{http_proxy}}
+export https_proxy={{http_proxy}}
+
+{% endif %}
 git clone --recursive --branch={{git_revision}} {{git_repository}} src
 version={{version}}
 {% if version_script %}
@@ -16,6 +21,10 @@ version=${version}~{{codename}}
 
 # myppa-install-prerequisite.sh
 cat <<EOT > myppa-install-prerequisite.sh
+{% if http_proxy %}
+export http_proxy={{http_proxy}}
+export https_proxy={{http_proxy}}
+{% endif %}
 #!/usr/bin/env bash
 {% for package in build_depends %}
 apt-get install -y {{package}}
@@ -25,6 +34,10 @@ EOT
 # myppa-install-project.sh
 cat <<EOT > myppa-install-project.sh
 #!/usr/bin/env bash
+{% if http_proxy %}
+export http_proxy={{http_proxy}}
+export https_proxy={{http_proxy}}
+{% endif %}
 cd /myppa/src
 {{before_configure}}
 mkdir /myppa/build

@@ -15,8 +15,10 @@ import sqlite3
 
 @click.group()
 @click.version_option(__version__)
-def cli():
-    pass
+@click.option("--http-proxy", help="HTTP proxy URL, e.g. http://user:password@127.0.0.1:3128")
+@click.pass_context
+def cli(ctx, http_proxy):
+    ctx.obj["http-proxy"] = http_proxy
 
 @cli.command()
 def clean():
@@ -104,8 +106,9 @@ def resolve(package, distribution, architecture, format):
 @click.option("--architecture", "-a",
         type=click.Choice(supported_architectures()),
         default=supported_architectures()[0])
-def script(package, distribution, architecture):
-    click.echo(get_script(package, distribution, architecture))
+@click.pass_context
+def script(ctx, package, distribution, architecture):
+    click.echo(get_script(ctx.obj["http-proxy"], package, distribution, architecture))
 
 @cli.command()
 @click.argument("package")
@@ -115,9 +118,10 @@ def script(package, distribution, architecture):
 @click.option("--architecture", "-a",
         type=click.Choice(supported_architectures()),
         default=supported_architectures()[0])
-def build(package, distribution, architecture):
+@click.pass_context
+def build(ctx, package, distribution, architecture):
     dist, codename = parse_distribution(distribution)
-    script = get_script(package, distribution, architecture)
+    script = get_script(ctx.obj["http-proxy"], package, distribution, architecture)
     scriptid = hashlib.sha1(script.encode('utf-8')).hexdigest()
     script_fullpath = os.path.join(get_cache_dir(), "{}.sh".format(scriptid))
     open(script_fullpath, 'w').write(script)
@@ -132,7 +136,7 @@ def build(package, distribution, architecture):
             shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
 
 def main():
-    return cli()
+    return cli(obj={})
 
 if __name__ == "__main__":
     sys.exit(main())
