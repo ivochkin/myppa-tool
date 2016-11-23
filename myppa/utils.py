@@ -122,6 +122,8 @@ def get_script(http_proxy, package, distribution, architecture):
     for k, v in description.items():
         variables[k.replace("-", "_")] = v
     env = Environment(loader=PackageLoader("myppa", os.path.join("data", "templates")))
+    env.trim_blocks = True
+    env.lstrip_blocks = True
     env.filters["format_deb_depends"] = format_deb_depends
     return env.get_template("build_deb.sh").render(variables)
 
