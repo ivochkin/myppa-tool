@@ -86,9 +86,18 @@ EOT
 cat <<EOT >myppa-pack-deb.sh
 #!/usr/bin/env bash
 cat myppa-new-files-raw | egrep '({{install_paths | join(")|(")}})' > myppa-new-files
-cat myppa-new-files
-<myppa-new-files xargs tar --create --gzip --no-recursion --file data.tar.gz
+# Append directories
+for i in \$(cat myppa-new-files) ; do
+  p="/"
+  for j in \$(tr "/" "\\n" <<< \$i | sed '\$d'); do
+    p="\$p\$j/"
+    echo \$p >> myppa-new-dirs
+  done
+done
+# Do not include dirs into md5sums
 <myppa-new-files xargs md5sum > md5sums
+cat myppa-new-dirs myppa-new-files | sort -u > myppa-new-files-with-dirs
+<myppa-new-files-with-dirs xargs tar --create --gzip --no-recursion --file data.tar.gz
 fakeroot tar --create --gzip --file control.tar.gz control changelog copyright md5sums
 fakeroot ar cr {{name}}_${version}_{{architecture}}.deb debian-binary control.tar.gz data.tar.gz
 EOT
