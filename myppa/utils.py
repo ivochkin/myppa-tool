@@ -2,11 +2,15 @@
 
 import os
 import sys
+import shutil
 import sqlite3
 import click
+import uuid
+import hashlib
 import yaml
 import json
 import xmltodict
+from subprocess import Popen
 from copy import copy
 from jinja2 import Environment, PackageLoader, Template
 from myppa.package import Package
@@ -15,12 +19,18 @@ from myppa.filters import *
 def supported_architectures():
     return ['amd64', 'i386']
 
-def supported_distributions():
+def supported_distributions(with_aliases=True):
     supported_ubuntus = [
-        "xenial", "16.04",
-        "trusty", "14.04",
-        "precise", "12.04",
+        "xenial",
+        "trusty",
+        "precise",
     ]
+    if with_aliases:
+        supported_ubuntus += [
+            "16.04",
+            "14.04",
+            "12.04",
+        ]
     return ["ubuntu:" + i for i in supported_ubuntus]
 
 def supported_formats():
@@ -136,3 +146,19 @@ def format_object(obj, format_type):
         obj = {"package": obj}
         return xmltodict.unparse(obj, pretty=True, indent="  ")
     raise RuntimeError("Unknown format '{}'".format(format_type))
+
+def run_builder(http_proxy, package, distribution, architecture):
+    dist, codename = parse_distribution(distribution)
+    script = get_script(http_proxy, package, distribution, architecture)
+    scriptid = hashlib.sha1(script.encode('utf-8')).hexdigest()
+    script_fullpath = os.path.join(get_cache_dir(), "{}.sh".format(scriptid))
+    open(script_fullpath, 'w').write(script)
+    tasks_dir = ensure_tasks_dir()
+    taskid = str(uuid.uuid4())
+    work_dir = os.path.join(tasks_dir, taskid)
+    os.mkdir(work_dir)
+    Popen(['sh', script_fullpath], cwd=work_dir).wait()
+    outdir = "packages"
+    for filename in os.listdir(work_dir):
+        if filename.endswith(".deb"):
+            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))

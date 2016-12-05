@@ -3,9 +3,6 @@
 import os
 import sys
 import shutil
-import hashlib
-import uuid
-from subprocess import Popen
 import click
 import yaml
 from myppa import __version__
@@ -120,20 +117,21 @@ def script(ctx, package, distribution, architecture):
         default=supported_architectures()[0])
 @click.pass_context
 def build(ctx, package, distribution, architecture):
-    dist, codename = parse_distribution(distribution)
-    script = get_script(ctx.obj["http-proxy"], package, distribution, architecture)
-    scriptid = hashlib.sha1(script.encode('utf-8')).hexdigest()
-    script_fullpath = os.path.join(get_cache_dir(), "{}.sh".format(scriptid))
-    open(script_fullpath, 'w').write(script)
-    tasks_dir = ensure_tasks_dir()
-    taskid = str(uuid.uuid4())
-    work_dir = os.path.join(tasks_dir, taskid)
-    os.mkdir(work_dir)
-    Popen(['sh', script_fullpath], cwd=work_dir).wait()
-    outdir = "packages"
-    for filename in os.listdir(work_dir):
-        if filename.endswith(".deb"):
-            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
+    run_builder(ctx.obj["http-proxy"], package, distribution, architecture)
+
+@cli.command()
+@click.pass_context
+def buildall(ctx):
+    conn = sqlite3.connect(get_packages_db())
+    packagelist = []
+    c = conn.cursor()
+    for row in c.execute("SELECT name, version from package ORDER BY name"):
+        packagelist.append(row)
+    conn.close()
+    for arch in supported_architectures():
+        for distr in supported_distributions(with_aliases=False):
+            for namever in packagelist:
+                run_builder(ctx.obj["http-proxy"], "@".join(namever), distr, arch)
 
 def main():
     return cli(obj={})
