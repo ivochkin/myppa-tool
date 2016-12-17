@@ -10,6 +10,9 @@ import hashlib
 import yaml
 import json
 import xmltodict
+import re
+import requests
+from requests.auth import HTTPBasicAuth
 from subprocess import Popen
 from copy import copy
 from jinja2 import Environment, PackageLoader, Template
@@ -35,6 +38,9 @@ def supported_distributions(with_aliases=True):
 
 def supported_formats():
     return ["yaml", "json", "xml"]
+
+def supported_deb_providers():
+    return ["bintray"]
 
 def _normalize_codename(name):
     return {
@@ -147,7 +153,8 @@ def format_object(obj, format_type):
         return xmltodict.unparse(obj, pretty=True, indent="  ")
     raise RuntimeError("Unknown format '{}'".format(format_type))
 
-def run_builder(http_proxy, package, distribution, architecture):
+def run_builder(http_proxy, package, distribution, architecture, upload_to, bintray_login, bintray_token):
+    name, _ = parse_package(package)
     dist, codename = parse_distribution(distribution)
     script = get_script(http_proxy, package, distribution, architecture)
     scriptid = hashlib.sha1(script.encode('utf-8')).hexdigest()
@@ -161,4 +168,20 @@ def run_builder(http_proxy, package, distribution, architecture):
     outdir = "packages"
     for filename in os.listdir(work_dir):
         if filename.endswith(".deb"):
-            shutil.copy(os.path.join(work_dir, filename), os.path.join(outdir, filename))
+            fullfilename = os.path.join(work_dir, filename)
+            debversion = re.match(r'.*_([^_]*)_.*', filename).group(1)
+            shutil.copy(fullfilename, os.path.join(outdir, filename))
+            if upload_to == "bintray":
+                headers = {
+                    "X-Bintray-Package": name,
+                    "X-Bintray-Version": debversion,
+                    "X-Bintray-Publish": "0",
+                    "X-Bintray-Override": "1",
+                    "X-Bintray-Debian-Distribution": codename,
+                    "X-Bintray-Debian-Component": "main",
+                    "X-Bintray-Debian-Architecture": architecture,
+                }
+                url = "https://api.bintray.com/content/{}/deb/pool/main/{}/{}".format(bintray_login, name, filename)
+                print("Deploy package", filename, "to bintray as", bintray_login)
+                r = requests.put(url, headers=headers, auth=HTTPBasicAuth(bintray_login, bintray_token), data=open(fullfilename, "rb").read())
+                print(r)

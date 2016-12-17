@@ -24,5 +24,6 @@ setup(
         "Jinja2>=2.7",
         "PyYAML>=3.12",
         "xmltodict>=0.10",
+        "requests>=2.12",
     ],
 )

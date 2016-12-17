@@ -115,13 +115,23 @@ def script(ctx, package, distribution, architecture):
 @click.option("--architecture", "-a",
         type=click.Choice(supported_architectures()),
         default=supported_architectures()[0])
+@click.option("--upload-to",
+        type=click.Choice(supported_deb_providers()),
+        default=supported_deb_providers()[0])
+@click.option("--bintray-login", required=False)
+@click.option("--bintray-token", required=False)
 @click.pass_context
-def build(ctx, package, distribution, architecture):
-    run_builder(ctx.obj["http-proxy"], package, distribution, architecture)
+def build(ctx, package, distribution, architecture, upload_to, bintray_login, bintray_token):
+    run_builder(ctx.obj["http-proxy"], package, distribution, architecture, upload_to, bintray_login, bintray_token)
 
 @cli.command()
 @click.pass_context
-def buildall(ctx):
+@click.option("--upload-to",
+        type=click.Choice(supported_deb_providers()),
+        default=supported_deb_providers()[0])
+@click.option("--bintray-login", required=False)
+@click.option("--bintray-token", required=False)
+def buildall(ctx, upload_to, bintray_login, bintray_token):
     conn = sqlite3.connect(get_packages_db())
     packagelist = []
     c = conn.cursor()
@@ -131,7 +141,7 @@ def buildall(ctx):
     for arch in supported_architectures():
         for distr in supported_distributions(with_aliases=False):
             for namever in packagelist:
-                run_builder(ctx.obj["http-proxy"], "@".join(namever), distr, arch)
+                run_builder(ctx.obj["http-proxy"], "@".join(namever), distr, arch, upload_to, bintray_login, bintray_token)
 
 def main():
     return cli(obj={})
