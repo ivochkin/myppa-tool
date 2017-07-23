@@ -1,0 +1,17 @@
+digraph "MyPPA architecture" {
+  node [shape=box];
+
+  packagesdb [label="packages.db"];
+  package [label="package.deb"];
+  jenkins [label="Jenkins CI"];
+  bintray [label="Bintray"];
+  script [label="build.sh"];
+
+  specs -> packagesdb [label=" myppa update"];
+  packagesdb -> package [label=" myppa build"];
+  packagesdb -> bintray [label=" myppa build --upload-to bintray"];
+  packagesdb -> jenkins [label=" myppa setup-jenkins"];
+  packagesdb -> script [label=" myppa script"];
+
+  jenkins -> package;
+}
