@@ -75,28 +75,22 @@ def update():
 
 @cli.command()
 @click.argument("package")
-@click.option("--format",
+@click.option("--format", "-f",
         type=click.Choice(supported_formats()),
         default=supported_formats()[0])
-def show(package, format):
-    description = get_package(package).description()
-    click.echo(format_object(description, format))
-
-@cli.command()
-@click.argument("package")
-@click.option("--distribution", "-d",
+@click.option("--resolve", "-r", required=False)
+@click.option("--distribution", "-d", required=False,
         type=click.Choice(supported_distributions()),
         default=supported_distributions()[0])
-@click.option("--architecture", "-a",
+@click.option("--architecture", "-a", required=False,
         type=click.Choice(supported_architectures()),
         default=supported_architectures()[0])
-@click.option("--format",
-        type=click.Choice(supported_formats()),
-        default=supported_formats()[0])
-def resolve(package, distribution, architecture, format):
+def show(package, format, resolve, distribution, architecture):
+    """Print spec of the given package"""
     dist, codename = parse_distribution(distribution)
-    resolved = get_package(package).resolve(dist, codename, architecture)
-    click.echo(format_object(resolved, format))
+    pkg = get_package(package)
+    description = pkg.resolve(dist, codename, architecture) if resolve else pkg.description()
+    click.echo(format_object(description, format))
 
 @cli.command()
 @click.argument("package")
