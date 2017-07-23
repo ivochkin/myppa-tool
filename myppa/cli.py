@@ -143,6 +143,18 @@ def buildall(ctx, upload_to, bintray_login, bintray_token):
             for namever in packagelist:
                 run_builder(ctx.obj["http-proxy"], "@".join(namever), distr, arch, upload_to, bintray_login, bintray_token)
 
+@cli.command()
+def info():
+    print("Supported architectures:")
+    for arch in supported_architectures():
+        print("-", arch)
+    print("Supported distributions:")
+    for dist in supported_distributions(with_aliases=False):
+        print("-", dist)
+    print("Supported deb providers:")
+    for prov in supported_deb_providers():
+        print("-", prov)
+
 def main():
     return cli(obj={})
 
