@@ -25,5 +25,6 @@ setup(
         "PyYAML>=3.12",
         "xmltodict>=0.10",
         "requests>=2.12",
+        "python-jenkins>=0.4.15",
     ],
 )

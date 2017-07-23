@@ -9,6 +9,7 @@ from myppa import __version__
 from myppa.utils import *
 from myppa.package import Package
 import sqlite3
+import jenkins
 
 @click.group()
 @click.version_option(__version__)
@@ -155,6 +156,49 @@ def info():
     print("DEB providers:")
     for prov in supported_deb_providers():
         print("-", prov)
+
+@cli.command(name="setup-jenkins")
+@click.pass_context
+@click.argument("host")
+@click.option("--user", required=False)
+@click.option("--token", required=False)
+@click.option("--secret", required=False)
+def setup_jenkins(ctx, host, user, token, secret):
+    """Configure Jenkins CI to build packages.db"""
+    j = jenkins.Jenkins(host, username=user, password=token)
+    print("Connected to Jenkins at {} as {}".format(host, user))
+    for job in j.get_all_jobs():
+        if job['fullname'].startswith('myppa'):
+            print("Jenkins is already configured for MyPPA")
+            return 1
+    conn = sqlite3.connect(get_packages_db())
+    packagelist = []
+    c = conn.cursor()
+    for row in c.execute("SELECT name, version from package ORDER BY name"):
+        packagelist.append(row)
+    conn.close()
+    for package in packagelist:
+        pkg = get_package("@".join(package))
+        for arch in supported_architectures():
+            for dist in supported_distributions(with_aliases=False):
+                dist, codename = parse_distribution(dist)
+                resolved_pkg = pkg.resolve(dist, codename, arch)
+                folder = resolved_pkg.get('jenkins-folder') or resolved_pkg['name']
+                full_path = [
+                    "myppa",
+                    folder,
+                    '-'.join((dist, codename)),
+                    arch,
+                    '-'.join((resolved_pkg['name'], resolved_pkg['version']))
+                ]
+                for i in range(1, len(full_path)):
+                    ifolder = "/".join(full_path[:i])
+                    if not j.job_exists(ifolder):
+                        j.create_job(ifolder, JENKINS_FOLDER_CONFIG_XML)
+                joburl = "/".join(full_path)
+                configxml = get_jenkins_config(ctx.obj["http-proxy"], pkg, dist, arch)
+                j.create_job(joburl, configxml)
+                print("Job {} created".format(joburl))
 
 def main():
     return cli(obj={})

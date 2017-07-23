@@ -127,9 +127,18 @@ def get_package(package):
     conn.close()
     return package
 
+def get_environment():
+    env = Environment(loader=PackageLoader("myppa", os.path.join("data", "templates")))
+    env.trim_blocks = True
+    env.lstrip_blocks = True
+    env.filters["format_deb_depends"] = format_deb_depends
+    env.filters["htmlsafe"] = htmlsafe
+    return env
+
 def get_script(http_proxy, package, distribution, architecture):
     distribution, codename = parse_distribution(distribution)
-    description = get_package(package).resolve(distribution, codename, architecture)
+    package = package if isinstance(package, Package) else get_package(package)
+    description = package.resolve(distribution, codename, architecture)
     description['http-proxy'] = http_proxy
     description['distribution'] = distribution
     description['codename'] = codename
@@ -137,11 +146,17 @@ def get_script(http_proxy, package, distribution, architecture):
     variables = copy(description)
     for k, v in description.items():
         variables[k.replace("-", "_")] = v
-    env = Environment(loader=PackageLoader("myppa", os.path.join("data", "templates")))
-    env.trim_blocks = True
-    env.lstrip_blocks = True
-    env.filters["format_deb_depends"] = format_deb_depends
+    env = get_environment()
     return env.get_template("build_deb.sh").render(variables)
+
+def get_jenkins_config(http_proxy, package, distribution, architecture):
+    buildsh = get_script(http_proxy, package, distribution, architecture)
+    variables = {
+        "token": "generate token here",
+        "command": buildsh
+    }
+    env = get_environment()
+    return env.get_template("jenkins_job.xml").render(variables)
 
 def format_object(obj, format_type):
     if format_type == "yaml":
@@ -185,3 +200,30 @@ def run_builder(http_proxy, package, distribution, architecture, upload_to, bint
                 print("Deploy package", filename, "to bintray as", bintray_login)
                 r = requests.put(url, headers=headers, auth=HTTPBasicAuth(bintray_login, bintray_token), data=open(fullfilename, "rb").read())
                 print(r)
+
+JENKINS_FOLDER_CONFIG_XML = """\
+<?xml version='1.0' encoding='UTF-8'?>
+<com.cloudbees.hudson.plugins.folder.Folder plugin="cloudbees-folder@6.1.0">
+  <actions/>
+  <description></description>
+  <properties/>
+  <folderViews class="com.cloudbees.hudson.plugins.folder.views.DefaultFolderViewHolder">
+    <views>
+      <hudson.model.AllView>
+        <owner class="com.cloudbees.hudson.plugins.folder.Folder" reference="../../../.."/>
+        <name>All</name>
+        <filterExecutors>false</filterExecutors>
+        <filterQueue>false</filterQueue>
+        <properties class="hudson.model.View$PropertyList"/>
+      </hudson.model.AllView>
+    </views>
+    <tabBar class="hudson.views.DefaultViewsTabBar"/>
+  </folderViews>
+  <healthMetrics>
+    <com.cloudbees.hudson.plugins.folder.health.WorstChildHealthMetric>
+      <nonRecursive>false</nonRecursive>
+    </com.cloudbees.hudson.plugins.folder.health.WorstChildHealthMetric>
+  </healthMetrics>
+  <icon class="com.cloudbees.hudson.plugins.folder.icons.StockFolderIcon"/>
+</com.cloudbees.hudson.plugins.folder.Folder>
+"""

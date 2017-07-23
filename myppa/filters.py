@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import html
+
 def format_deb_depends(depends):
     dependlist = []
     for pkgname, verspec in depends.items():
@@ -35,3 +37,6 @@ def format_deb_depends(depends):
             dependstr += " [!{}]".format(verspec["excluding-platform"])
         dependlist.append(dependstr)
     return ", ".join(dependlist)
+
+def htmlsafe(string):
+    return html.escape(string)
