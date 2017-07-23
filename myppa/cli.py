@@ -19,6 +19,7 @@ def cli(ctx, http_proxy):
 
 @cli.command()
 def clean():
+    """Clean packages.db"""
     cwd = ensure_cwd()
     cache_dir = os.path.join(cwd, "cache")
     if not click.confirm("Erase cache/ directory?"):
@@ -34,6 +35,7 @@ def clean():
 
 @cli.command()
 def list():
+    """List all packages in packages.db"""
     conn = sqlite3.connect(get_packages_db())
     c = conn.cursor()
     print("Packages with fixed versions")
@@ -46,6 +48,7 @@ def list():
 
 @cli.command()
 def update():
+    """Update packages.db according to specs"""
     specs = []
     for root, dirs, files in os.walk(get_specs_dir()):
         for filename in files:
@@ -105,6 +108,7 @@ def resolve(package, distribution, architecture, format):
         default=supported_architectures()[0])
 @click.pass_context
 def script(ctx, package, distribution, architecture):
+    """Print build.sh for the given package"""
     click.echo(get_script(ctx.obj["http-proxy"], package, distribution, architecture))
 
 @cli.command()
@@ -122,6 +126,7 @@ def script(ctx, package, distribution, architecture):
 @click.option("--bintray-token", required=False)
 @click.pass_context
 def build(ctx, package, distribution, architecture, upload_to, bintray_login, bintray_token):
+    """Build package"""
     run_builder(ctx.obj["http-proxy"], package, distribution, architecture, upload_to, bintray_login, bintray_token)
 
 @cli.command()
@@ -132,6 +137,7 @@ def build(ctx, package, distribution, architecture, upload_to, bintray_login, bi
 @click.option("--bintray-login", required=False)
 @click.option("--bintray-token", required=False)
 def buildall(ctx, upload_to, bintray_login, bintray_token):
+    """Build all packages from the database"""
     conn = sqlite3.connect(get_packages_db())
     packagelist = []
     c = conn.cursor()
@@ -145,13 +151,14 @@ def buildall(ctx, upload_to, bintray_login, bintray_token):
 
 @cli.command()
 def info():
-    print("Supported architectures:")
+    """Print a list of supported features"""
+    print("Architectures:")
     for arch in supported_architectures():
         print("-", arch)
-    print("Supported distributions:")
+    print("Distributions:")
     for dist in supported_distributions(with_aliases=False):
         print("-", dist)
-    print("Supported deb providers:")
+    print("DEB providers:")
     for prov in supported_deb_providers():
         print("-", prov)
 
